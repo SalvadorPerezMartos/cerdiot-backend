@@ -1,34 +1,46 @@
-# /opt/iot-backend/app/config.py
-from pathlib import Path
+# app/config.py
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
-from pydantic_settings import BaseSettings
-
-
-BASE_DIR = Path(__file__).resolve().parent.parent  # /opt/iot-backend
 
 
 class Settings(BaseSettings):
-    # Estos 3 vienen tal cual en tu .env
-    APP_NAME: str = "CerdIoT API"
-    VERSION: str = "1.0.0"
-    ENVIRONMENT: str = "production"
+    # datos básicos
+    app_name: str = "CerdIoT API"
+    version: str = "1.0.0"
+    environment: str = "production"
 
-    # Tu .env usa DATABASE_URL (no SQLALCHEMY_DATABASE_URI)
-    DATABASE_URL: str
+    # ==== BASE DE DATOS ====
+    # en tu .env tienes DATABASE_URL=postgresql+psycopg2://...
+    database_url: str
+    # Alembic y tu app a veces esperan este nombre:
+    SQLALCHEMY_DATABASE_URI: str | None = None
 
-    # JWT
-    JWT_SECRET_KEY: str
-    JWT_ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
+    # ==== JWT ====
+    jwt_secret_key: str  # en .env: JWT_SECRET_KEY=...
+    jwt_algorithm: str = "HS256"  # en .env: JWT_ALGORITHM=HS256
+    access_token_expire_minutes: int = 60  # en .env: ACCESS_TOKEN_EXPIRE_MINUTES=1440
 
-    class Config:
-        env_file = BASE_DIR / ".env"
-        env_file_encoding = "utf-8"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        # mapeamos nombres en mayúsculas del .env a los de aquí
+        env_prefix="",
+        case_sensitive=False,
+    )
+
+    def get_db_uri(self) -> str:
+        # si no nos han puesto SQLALCHEMY_DATABASE_URI, usamos database_url
+        return self.SQLALCHEMY_DATABASE_URI or self.database_url
 
 
 @lru_cache
-def get_settings() -> "Settings":
-    return Settings()
+def get_settings() -> Settings:
+    s = Settings()
+    # aseguramos que SQLALCHEMY_DATABASE_URI tenga valor
+    if not s.SQLALCHEMY_DATABASE_URI:
+        s.SQLALCHEMY_DATABASE_URI = s.database_url
+    return s
 
 
+# este es el que importas en el resto de módulos
 settings = get_settings()

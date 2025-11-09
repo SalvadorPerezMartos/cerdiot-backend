@@ -8,39 +8,26 @@ from pydantic import BaseModel
 
 from app.database import get_db
 from app import models
-from app.security import (
-    verify_password,
-    create_access_token,
-    get_password_hash,
-)
+from app.security import verify_password, create_access_token, get_password_hash
 from app.deps import get_current_user
-from app.schemas.auth import UserPublic  # debe tener is_admin si lo quieres devolver
+from app.schemas.auth import UserPublic
 
 router = APIRouter()
 
 
-# ====== SCHEMAS ======
 class UserRegister(BaseModel):
     username: str
     password: str
     full_name: Optional[str] = None
     is_active: bool = True
-    # lo añadimos para que un admin pueda crear otro admin
-    is_admin: bool = False
 
-
-# ====== ENDPOINTS ======
 
 @router.post("/login")
 def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
-    user = (
-        db.query(models.User)
-        .filter(models.User.username == form_data.username)
-        .first()
-    )
+    user = db.query(models.User).filter(models.User.username == form_data.username).first()
     if not user:
         raise HTTPException(status_code=400, detail="Incorrect username or password")
 
@@ -57,6 +44,7 @@ def login(
 
 @router.get("/me", response_model=UserPublic)
 def me(current_user: models.User = Depends(get_current_user)):
+    # devolver tal cual, con from_attributes=True no hay problema
     return current_user
 
 
@@ -66,22 +54,14 @@ def register_user(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    """
-    Crea un nuevo usuario.
-    Ahora validamos por flag de BBDD (is_admin) en vez de por username="admin"
-    """
-    if not current_user.is_admin:
+    # versión simple: solo el admin “admin” puede crear
+    if current_user.username != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only admins can create users",
+            detail="Only admin can create users",
         )
 
-    # comprobar si ya existe
-    existing = (
-        db.query(models.User)
-        .filter(models.User.username == user_in.username)
-        .first()
-    )
+    existing = db.query(models.User).filter(models.User.username == user_in.username).first()
     if existing:
         raise HTTPException(status_code=400, detail="Username already exists")
 
@@ -90,7 +70,6 @@ def register_user(
         password_hash=get_password_hash(user_in.password),
         full_name=user_in.full_name or user_in.username,
         is_active=user_in.is_active,
-        is_admin=user_in.is_admin,  # nuevo
     )
     db.add(user)
     db.commit()
